@@ -138,6 +138,7 @@ public struct SFSymbolRenderer {
         }
 
         template.normalizeVariants()
+        try template.validateVariants()
         template.setSize(size)
 
         let element = try XML.Formatter.SVG(formatter: formatter).makeElement(from: template.svg)
@@ -458,6 +459,53 @@ struct SFSymbolTemplate {
                 &black.contents.paths[i].segments
             )
         }
+    }
+
+    /// Verifies that all three weight variants share an identical path structure.
+    ///
+    /// SF Symbols stores only the ultralight, regular and black anchors and derives every
+    /// other weight and scale by interpolating between them point by point. That mapping
+    /// requires the three variants to agree on the number of paths and, per path, on the
+    /// sequence of segment types. When they don't, the symbol compiles into an asset
+    /// catalog without complaint and CoreUI raises an exception the first time it is drawn.
+    ///
+    /// `normalizeVariants()` repairs the cases it can; this reports what is left.
+    func validateVariants() throws {
+        let ultralightPaths = ultralight.contents.paths
+        let regularPaths = regular.contents.paths
+        let blackPaths = black.contents.paths
+
+        guard ultralightPaths.count == regularPaths.count,
+              regularPaths.count == blackPaths.count else {
+            throw Self.makeVariantError(
+                "path count is \(ultralightPaths.count)/\(regularPaths.count)/\(blackPaths.count) (ultralight/regular/black)"
+            )
+        }
+
+        for index in regularPaths.indices {
+            let ultralightTypes = ultralightPaths[index].segments.map(\.commandType)
+            let regularTypes = regularPaths[index].segments.map(\.commandType)
+            let blackTypes = blackPaths[index].segments.map(\.commandType)
+
+            guard ultralightTypes.count == regularTypes.count,
+                  regularTypes.count == blackTypes.count else {
+                throw Self.makeVariantError(
+                    "path \(index) has \(ultralightTypes.count)/\(regularTypes.count)/\(blackTypes.count) segments (ultralight/regular/black)"
+                )
+            }
+
+            guard ultralightTypes == regularTypes, regularTypes == blackTypes else {
+                throw Self.makeVariantError("path \(index) has mismatched segment types")
+            }
+        }
+    }
+
+    static func makeVariantError(_ detail: String) -> SFSymbolRenderer.Error {
+        SFSymbolRenderer.Error(
+            "Variants are not interpolatable: \(detail). "
+                + "All three variants must share an identical path structure — same number of paths, "
+                + "and the same sequence of segment types within each path."
+        )
     }
 
     static func normalizeSegments(
