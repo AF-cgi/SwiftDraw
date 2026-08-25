@@ -200,6 +200,25 @@ struct ParserSVGTests {
     }
 
     @Test
+    func viewBoxWithCommaDelimiters() throws {
+        let parsed = try #require(try XMLParser().parseViewBox("0,0,150,50"))
+        #expect(parsed.x == 0)
+        #expect(parsed.y == 0)
+        #expect(parsed.width == 150)
+        #expect(parsed.height == 50)
+    }
+
+    @Test
+    func invalidViewBoxWithCommaDelimiters() {
+        #expect(throws: (any Error).self) {
+            try XMLParser().parseViewBox("10,,,10,10,10")
+        }
+        #expect(throws: (any Error).self) {
+            try XMLParser().parseViewBox("10,10,10")
+        }
+    }
+
+    @Test
     func clipPath() throws {
         let node = XML.Element(name: "clipPath", attributes: ["id": "hello"])
 
