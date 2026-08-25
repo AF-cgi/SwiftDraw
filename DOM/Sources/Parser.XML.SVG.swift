@@ -29,6 +29,8 @@
 //  3. This notice may not be removed or altered from any source distribution.
 //
 
+import Foundation
+
 package extension XMLParser {
 
     func parseSVG(_ e: XML.Element) throws -> DOM.SVG {
@@ -72,9 +74,9 @@ package extension XMLParser {
         guard let data = data else { return nil }
         var scanner = XMLParser.Scanner(text: data)
 
-        let x = try scanner.scanCoordinate()
-        let y = try scanner.scanCoordinate()
-        let width = try scanner.scanCoordinate()
+        let x = try scanner.scanViewBoxCoordinate()
+        let y = try scanner.scanViewBoxCoordinate()
+        let width = try scanner.scanViewBoxCoordinate()
         let height = try scanner.scanCoordinate()
 
         guard scanner.isEOF else {
@@ -246,4 +248,18 @@ package extension XMLParser {
         pattern.childElements = try parseGraphicsElements(e.children)
         return pattern
     }
+}
+
+private extension XMLParser.Scanner {
+
+    mutating func scanViewBoxCoordinate() throws -> DOM.Coordinate {
+        let coordinate = try scanCoordinate()
+        _ = try? scanCharacter(matchingAny: .viewBoxSeparator)
+        return coordinate
+    }
+}
+
+private extension Foundation.CharacterSet {
+
+    static let viewBoxSeparator = Foundation.CharacterSet(charactersIn: ",")
 }
