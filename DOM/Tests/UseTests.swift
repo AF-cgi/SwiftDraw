@@ -55,19 +55,38 @@ struct UseTests {
 
     @Test
     func use() throws {
-        var node = ["xlink:href": "#line2", "href": "#line1"]
-
-        var parsed = try XMLParser().parseUse(node)
-        #expect(parsed.href.fragmentID == "line2")
+        let parsed = try XMLParser().parseUse(["href": "#line1"])
+        #expect(parsed.href.fragmentID == "line1")
         #expect(parsed.x == nil)
         #expect(parsed.y == nil)
 
-        node["x"] = "20"
-        node["y"] = "30"
+        let legacyParsed = try XMLParser().parseUse([
+            "xlink:href": "#line2",
+            "x": "20",
+            "y": "30"
+        ])
+        #expect(legacyParsed.href.fragmentID == "line2")
+        #expect(legacyParsed.x == 20)
+        #expect(legacyParsed.y == 30)
+    }
 
-        parsed = try XMLParser().parseUse(node)
-        #expect(parsed.href.fragmentID == "line2")
-        #expect(parsed.x == 20)
-        #expect(parsed.y == 30)
+    @Test
+    func usePrefersHrefWhenBothAttributesArePresent() throws {
+        let parsed = try XMLParser().parseUse([
+            "href": "#modern",
+            "xlink:href": "#legacy"
+        ])
+
+        #expect(parsed.href.fragmentID == "modern")
+    }
+
+    @Test
+    func useDoesNotFallbackToXLinkHrefWhenHrefIsInvalid() {
+        #expect(throws: XMLParser.Error.self) {
+            _ = try XMLParser().parseUse([
+                "href": "https://[invalid",
+                "xlink:href": "#legacy"
+            ])
+        }
     }
 }

@@ -32,7 +32,17 @@
 extension XMLParser {
   
   func parseUse(_ att: any AttributeParser) throws -> DOM.Use {
-    let use = DOM.Use(href: try att.parseUrl("xlink:href"))
+      let href: DOM.URL = try {
+          do {
+            return try att.parseUrl("href")
+          } catch XMLParser.Error.missingAttribute(_) {
+              /// Backward compatibility for the deprecated "xlink:href"
+              /// https://www.w3.org/TR/SVG/linking.html#XLinkRefAttrs
+              return try att.parseUrl("xlink:href")
+          }
+      }()
+      
+    let use = DOM.Use(href: href)
     use.x = try att.parseCoordinate("x")
     use.y = try att.parseCoordinate("y")
     
