@@ -282,6 +282,143 @@ final class RendererSFSymbolTests: XCTestCase {
             XCTFail("Expected cubic segment")
         }
     }
+
+    // MARK: - Variant Validation Tests
+
+    func testValidateVariants_MatchingStructure() throws {
+        var template = try SFSymbolTemplate.make()
+        template.setVariantSegments(ultralight: [.squareSegments], regular: [.squareSegments], black: [.squareSegments])
+
+        XCTAssertNoThrow(try template.validateVariants())
+    }
+
+    func testValidateVariants_ThrowsForPathCountMismatch() throws {
+        var template = try SFSymbolTemplate.make()
+        template.setVariantSegments(
+            ultralight: [.squareSegments, .squareSegments],
+            regular: [.squareSegments, .squareSegments],
+            black: [.squareSegments]
+        )
+
+        XCTAssertThrowsError(try template.validateVariants()) {
+            XCTAssertTrue(
+                $0.localizedDescription.contains("path count is 2/2/1"),
+                "Expected the path counts in the message, got: \($0.localizedDescription)"
+            )
+        }
+    }
+
+    func testValidateVariants_ThrowsForSegmentCountMismatch() throws {
+        var template = try SFSymbolTemplate.make()
+        template.setVariantSegments(
+            ultralight: [.squareSegments],
+            regular: [.squareSegments],
+            black: [.triangleSegments]
+        )
+
+        XCTAssertThrowsError(try template.validateVariants()) {
+            XCTAssertTrue(
+                $0.localizedDescription.contains("path 0 has 4/4/3 segments"),
+                "Expected the segment counts in the message, got: \($0.localizedDescription)"
+            )
+        }
+    }
+
+    func testValidateVariants_ThrowsForSegmentTypeMismatch() throws {
+        var template = try SFSymbolTemplate.make()
+        template.setVariantSegments(
+            ultralight: [.squareSegments],
+            regular: [.squareSegments],
+            black: [.curvedSquareSegments]
+        )
+
+        XCTAssertThrowsError(try template.validateVariants()) {
+            XCTAssertTrue(
+                $0.localizedDescription.contains("path 0 has mismatched segment types"),
+                "Expected a segment type mismatch, got: \($0.localizedDescription)"
+            )
+        }
+    }
+
+    func testRender_ThrowsForNonInterpolatableVariants() throws {
+        // The regular variant draws its outline with a cubic where black uses a line;
+        // normalization cannot align them, so rendering must fail instead of emitting
+        // a symbol that crashes CoreUI at draw time.
+        let regular = try DOM.SVG.parse(
+            #"<svg width="24" height="24"><path d="M0 0 L10 0 C10 5 15 5 15 10 L0 10 Z" /></svg>"#
+        )
+        let black = try DOM.SVG.parse(
+            #"<svg width="24" height="24"><path d="M0 0 L10 0 L15 10 Z" /></svg>"#
+        )
+        let renderer = SFSymbolRenderer(
+            size: .small,
+            options: [],
+            insets: .init(),
+            insetsUltralight: .init(),
+            insetsBlack: .init(),
+            precision: 3,
+            isLegacyInsets: false
+        )
+
+        XCTAssertThrowsError(try renderer.render(default: regular, ultralight: nil, black: black)) {
+            XCTAssertTrue(
+                $0.localizedDescription.contains("not interpolatable"),
+                "Expected an interpolation error, got: \($0.localizedDescription)"
+            )
+        }
+    }
+}
+
+private extension SFSymbolTemplate {
+
+    /// Replaces the contents of all three weight variants with paths built from `segments`.
+    mutating func setVariantSegments(
+        ultralight: [[DOM.Path.Segment]],
+        regular: [[DOM.Path.Segment]],
+        black: [[DOM.Path.Segment]]
+    ) {
+        self.ultralight.contents.paths = ultralight.map { .make($0) }
+        self.regular.contents.paths = regular.map { .make($0) }
+        self.black.contents.paths = black.map { .make($0) }
+    }
+}
+
+private extension DOM.Path {
+
+    static func make(_ segments: [Segment]) -> DOM.Path {
+        let path = DOM.Path(x: 0, y: 0)
+        path.segments = segments
+        return path
+    }
+}
+
+private extension [DOM.Path.Segment] {
+
+    static var squareSegments: Self {
+        [
+            .move(x: 0, y: 0, space: .absolute),
+            .line(x: 10, y: 0, space: .absolute),
+            .line(x: 10, y: 10, space: .absolute),
+            .close
+        ]
+    }
+
+    static var triangleSegments: Self {
+        [
+            .move(x: 0, y: 0, space: .absolute),
+            .line(x: 10, y: 0, space: .absolute),
+            .close
+        ]
+    }
+
+    static var curvedSquareSegments: Self {
+        [
+            .move(x: 0, y: 0, space: .absolute),
+            .cubic(x1: 0, y1: 0, x2: 10, y2: 0, x: 10, y: 0, space: .absolute),
+            .line(x: 10, y: 10, space: .absolute),
+            .close
+        ]
+    }
 }
 
 private extension DOM.SVG {
