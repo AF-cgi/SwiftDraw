@@ -30,6 +30,7 @@
 //
 
 import Foundation
+import SwiftDrawDOM
 import Testing
 @testable import SwiftDraw
 
@@ -43,6 +44,8 @@ struct LogLevelTests {
     }
 }
 
+/// The handler is process wide, so this is the only suite that replaces it.
+/// Messages emitted by tests running in parallel are ignored, never asserted on.
 @Suite(.serialized)
 struct LogTests {
 
@@ -52,17 +55,17 @@ struct LogTests {
         let original = Log.handler
         defer { Log.handler = original }
 
-        Log.handler = messages.append
+        Log.handler = { messages.append($0, $1) }
         let handler = Log.handler
 
-        handler(.info, "alignment")
-        handler(.warning, "unsupported")
-        handler(.error, "invalid")
+        handler(.info, "\(token) alignment")
+        handler(.warning, "\(token) unsupported")
+        handler(.error, "\(token) invalid")
 
         #expect(messages.lines == [
-            "info: alignment",
-            "warning: unsupported",
-            "error: invalid"
+            "info: \(token) alignment",
+            "warning: \(token) unsupported",
+            "error: \(token) invalid"
         ])
     }
 
@@ -72,15 +75,15 @@ struct LogTests {
         let original = Log.handler
         defer { Log.handler = original }
 
-        Log.handler = messages.append
+        Log.handler = { messages.append($0, $1) }
         let restored = Log.handler
 
         Log.handler = Log.silent
         Log.handler = restored
 
-        Log.handler(.warning, "unsupported")
+        Log.handler(.warning, "\(token) unsupported")
 
-        #expect(messages.lines == ["warning: unsupported"])
+        #expect(messages.lines == ["warning: \(token) unsupported"])
     }
 
     @Test
@@ -90,13 +93,82 @@ struct LogTests {
 
         Log.handler = Log.silent
 
-        Log.handler(.info, "alignment")
-        Log.handler(.warning, "unsupported")
-        Log.handler(.error, "invalid")
+        Log.handler(.info, "\(token) alignment")
+        Log.handler(.warning, "\(token) unsupported")
+        Log.handler(.error, "\(token) invalid")
+    }
+
+    @Test
+    func emittedMessagesReachTheHandler() {
+        let messages = Messages()
+        let original = Log.handler
+        defer { Log.handler = original }
+
+        Log.handler = { messages.append($0, $1) }
+
+        LogSink.info("\(token) alignment")
+        LogSink.warning("\(token) unsupported")
+        LogSink.error("\(token) invalid")
+
+        #expect(messages.lines == [
+            "info: \(token) alignment",
+            "warning: \(token) unsupported",
+            "error: \(token) invalid"
+        ])
+    }
+
+    // Commands are only generated when CoreGraphics is available; the renderer
+    // emits no warnings on other platforms.
+#if canImport(CoreGraphics)
+    @Test
+    func renderingWarningsReachTheHandler() throws {
+        let messages = Messages(filter: nil)
+        let original = Log.handler
+        defer { Log.handler = original }
+
+        Log.handler = { messages.append($0, $1) }
+
+        let xml = #"""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="fade">
+                    <stop offset="0" stop-color="black" stop-opacity="0"/>
+                    <stop offset="1" stop-color="black" stop-opacity="1"/>
+                </linearGradient>
+            </defs>
+            <rect width="100" height="100" fill="url(#fade)"/>
+        </svg>
+        """#
+
+        let dom = try DOM.SVG.parse(data: Data(xml.utf8))
+        _ = SVG(dom: dom, options: [.disableTransparencyLayers])
+
+        #expect(messages.lines.contains("warning: PDF does not support gradients with stop-opacity"))
+    }
+#endif
+
+    @Test
+    func parsingErrorsReachTheHandler() throws {
+        let messages = Messages(filter: nil)
+        let original = Log.handler
+        defer { Log.handler = original }
+
+        Log.handler = { messages.append($0, $1) }
+
+        XMLParser.logParsingError(for: XMLParser.Error.invalid, filename: "empire.svg")
+
+        #expect(messages.lines.contains("error: [parsing error] empire.svg  error: invalid"))
     }
 }
 
+private let token = "LogTests"
+
 private final class Messages: @unchecked Sendable {
+
+    init(filter: String? = token) {
+        self.filter = filter
+    }
 
     var lines: [String] {
         lock.lock()
@@ -106,11 +178,13 @@ private final class Messages: @unchecked Sendable {
 
     @Sendable
     func append(_ level: Log.Level, _ message: String) {
+        guard filter.map(message.contains) ?? true else { return }
         lock.lock()
         defer { lock.unlock() }
         stored.append("\(level): \(message)")
     }
 
+    private let filter: String?
     private let lock = NSLock()
     private var stored = [String]()
 }

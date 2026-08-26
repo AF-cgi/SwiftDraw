@@ -113,48 +113,59 @@ struct LogSinkTests {
     }
 }
 
-@Suite(.serialized)
-struct LogSinkHandlerTests {
+struct ParsingErrorMessageTests {
 
     @Test
-    func messagesAreForwardedToHandler() {
-        let streams = Streams()
-        let original = LogSink.handler
-        defer { LogSink.handler = original }
+    func invalidElementWithLocation() {
+        let message = XMLParser.makeParsingErrorMessage(
+            for: XMLParser.Error.invalidElement(
+                name: "rect",
+                error: DescribedError(),
+                line: 3,
+                column: 7
+            ),
+            filename: "sample.svg"
+        )
 
-        LogSink.handler = { level, message in
-            guard message.hasPrefix(token) else { return }
-            streams.append("\(level): \(message)")
-        }
-
-        LogSink.info("\(token) alignment")
-        LogSink.warning("\(token) unsupported")
-        LogSink.error("\(token) invalid")
-
-        #expect(streams.lines == [
-            "info: \(token) alignment",
-            "warning: \(token) unsupported",
-            "error: \(token) invalid"
-        ])
+        #expect(message == "[parsing error] sample.svg <rect> line: 3 column: 7 error: missing width")
     }
 
     @Test
-    func replacedHandlerNoLongerReceivesMessages() {
-        let streams = Streams()
-        let original = LogSink.handler
-        defer { LogSink.handler = original }
+    func invalidElementWithoutLocation() {
+        let message = XMLParser.makeParsingErrorMessage(
+            for: XMLParser.Error.invalidElement(
+                name: "rect",
+                error: XMLParser.Error.invalid,
+                line: nil,
+                column: nil
+            ),
+            filename: "sample.svg"
+        )
 
-        LogSink.handler = { _, message in streams.append(message) }
-        LogSink.warning("\(token) unsupported")
+        #expect(message == "[parsing error] sample.svg <rect> error: invalid")
+    }
 
-        LogSink.handler = { _, _ in }
-        LogSink.warning("\(token) discarded")
+    @Test
+    func invalidDocument() {
+        let message = XMLParser.makeParsingErrorMessage(
+            for: XMLParser.Error.invalidDocument(
+                error: nil,
+                element: "svg",
+                line: 1,
+                column: 2
+            ),
+            filename: "sample.svg"
+        )
 
-        #expect(streams.lines == ["\(token) unsupported"])
+        #expect(message == "[parsing error] sample.svg <svg> line: 1 column: 2")
     }
 }
 
-private let token = "LogSinkHandlerTests"
+/// Nested errors are interpolated into the message, so the expected text must not
+/// depend on how a given platform reflects an enum with associated values.
+private struct DescribedError: Error, CustomStringConvertible {
+    var description: String { "missing width" }
+}
 
 private final class Streams: @unchecked Sendable {
 
