@@ -156,7 +156,7 @@ Or silences them entirely:
 Log.handler = Log.silent
 ```
 
-Assign the handler once during startup, before any SVG is loaded.
+Assign the handler once during startup, before any SVG is loaded. The command line tool exposes the same control with `--quiet`, which reports failures only.
 
 ## Command line tool
 
@@ -176,6 +176,7 @@ Options:
  --insets      crop inset of output image: top,left,bottom,right
  --precision   maximum number of decimal places
  --output      optional path of output file
+ --quiet       suppress warnings and progress, reporting failures only
 
  --hide-unsupported-filters   hide elements with unsupported filters.
 

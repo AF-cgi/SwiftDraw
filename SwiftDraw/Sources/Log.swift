@@ -89,6 +89,25 @@ public enum Log {
     public static let silent: Handler = { _, _ in }
 }
 
+public extension Log {
+
+    /// Emits a message that forms part of the expected output.
+    static func info(_ message: String) {
+        LogSink.info(message)
+    }
+
+    /// Emits a message about content that was handled in a degraded way.
+    /// The `Warning:` prefix is applied by the handler.
+    static func warning(_ message: String) {
+        LogSink.warning(message)
+    }
+
+    /// Emits a message about content that could not be handled.
+    static func error(_ message: String) {
+        LogSink.error(message)
+    }
+}
+
 private extension Log.Level {
 
     var sink: LogSink.Level {
